@@ -35,12 +35,14 @@
 | `ath11k-6.12.91-lowmem.ko` | 5G 低内存修复模块（`DP_*_RING_SIZE` 缩小，已验证） |
 | `ath11k_ahb-6.12.91-lowmem.ko` | 同上，AHB 总线模块 |
 | `qmi_helpers-6.12.91.ko` | 同上，QMI helpers |
-| `board-xiaomi_ra80.ipq5018` | 2.4G board-2.bin（bus=ahb，BDF 0x45c 修正） |
-| `board-xiaomi_ra80.qcn6122` | 5G board-2.bin（bus=ahb） |
 | `SHA256SUMS` | 以上文件的 SHA-256 |
 
-模块对应内核 **6.12.91**。替换 `/lib/modules/6.12.91/` 下的同名文件后需要重启
-（ath11k 卸载后 Q6 无法重新启动）。
+模块对应内核 **6.12.91**。`ubi-rootfs.bin` 里的 ath11k 模块**不含** 949 补丁，
+所以刷完 rootfs 后要把这三个 `.ko` 覆盖到 `/lib/modules/6.12.91/` 并重启
+（ath11k 卸载后 Q6 无法重新启动），否则 5G 会报 order-8 分配失败。
+
+board-2 文件不单独放进 release，源码仓库里已有：
+`ra80-openwrt/package/firmware/ipq-wifi/files/board-xiaomi_ra80.*`。
 
 ## 安装到 NAND（已验证路径）
 
