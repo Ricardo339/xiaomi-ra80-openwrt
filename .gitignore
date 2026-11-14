@@ -1,0 +1,23 @@
+# PuTTY 二进制（可自行下载，不入库）
+tools/putty/
+
+# 过大的原厂分区备份（仅本地保留）
+ra80-backup/mtd18-rootfs.bin
+ra80-backup/mtd19-rootfs_1.bin
+ra80-backup/mtd20-overlay.bin
+
+# 临时/缓存
+*.log.tmp
+__pycache__/
+
+# 设备唯一 / 含密钥的分区备份：仅本地保留，绝不入库
+ra80-backup/mtd10-APPSBLENV.bin
+ra80-backup/mtd13-ART.bin
+ra80-backup/mtd15-bdata.bin
+ra80-recovery/mtd10-APPSBLENV.bin
+
+# 公开仓库只保留源码/文档；以下二进制与本地备份不入库
+ra80-backup/
+ra80-images/
+ra80-recovery/*.bin
+tools/board-2-ra80*.bin

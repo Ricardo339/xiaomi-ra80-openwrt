@@ -1,0 +1,525 @@
+// =====================================================================
+// UNVERIFIED / 未验证：合并 rootfs/rootfs_1/overlay 为单个 117.5MB 分区的版本。
+// 该 DTS 只编译过镜像，从未在设备上启动过（设备在验证前已变砖）。
+// 不要把它当作已验证方案；保留仅供后续实验参考。
+// =====================================================================
+
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+/*
+ * Xiaomi Router AX3000 (RA80 V2)
+ * IPQ5018 + QCN6122, 128MB SPI-NAND, 256MB RAM
+ *
+ * 以太网拓扑（原厂 V2 实测）：
+ *   MAC0(dp1) -> 内置 GE PHY（未接外置交换机）
+ *   MAC1(dp2) -> Uniphy SGMII+ 2500 -> YT9215S CPU port (port 8)
+ *   YT9215S: MDIO1，默认地址 0x1d，5 个内置 GbE PHY
+ *   原厂 swconfig 端口映射：
+ *     port0 -> Lan1, port1 -> Lan2, port2 -> Lan3, port3 -> Wan
+ *     port5(原厂编号) = 2500M CPU 链路
+ *
+ * 本机实测：
+ *   - ART: 0x0 = MAC0, 0x6 = MAC1
+ *   - LED: 24/25/26/27，低电平点亮
+ *   - KEY: mesh=28, reset=38
+ *   - UART 由引导器配置；内核 bootargs 不要带 console=ttyMSM0
+ *   - NAND 4-bit ECC 读取正常
+ */
+
+/dts-v1/;
+
+#include "ipq5018.dtsi"
+#include "ipq5018-ess.dtsi"
+#include "ipq5018-qcn6122.dtsi"
+#include "ipq5018-nss.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/leds/common.h>
+#include <dt-bindings/net/qcom-ipq-ess.h>
+
+/ {
+	model = "Xiaomi Router AX3000 (RA80 V2)";
+	compatible = "xiaomi,ra80-v2", "qcom,ipq5018";
+
+	aliases {
+		serial0 = &blsp1_uart1;
+		led-boot = &led_sys_red;
+		led-failsafe = &led_sys_red;
+		led-running = &led_sys_blue;
+		led-upgrade = &led_sys_red;
+		label-mac-device = <&dp2>;
+	};
+
+	chosen {
+		bootargs-append = " root=/dev/ubiblock0_1 swiotlb=1 coherent_pool=2M";
+		stdout-path = "serial0:115200n8";
+	};
+
+	keys {
+		compatible = "gpio-keys";
+		pinctrl-0 = <&button_pins>;
+		pinctrl-names = "default";
+
+		mesh-button {
+			label = "mesh";
+			gpios = <&tlmm 28 GPIO_ACTIVE_LOW>;
+			/* 原厂 linux,code = 0x109 (265) */
+			linux,code = <265>;
+		};
+
+		reset-button {
+			label = "reset";
+			gpios = <&tlmm 38 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-0 = <&led_pins>;
+		pinctrl-names = "default";
+
+		led_sys_red: led-sys-red {
+			gpios = <&tlmm 25 GPIO_ACTIVE_HIGH>;
+			color = <LED_COLOR_ID_RED>;
+			function = LED_FUNCTION_STATUS;
+			default-state = "on";
+		};
+
+		led_sys_blue: led-sys-blue {
+			gpios = <&tlmm 24 GPIO_ACTIVE_HIGH>;
+			color = <LED_COLOR_ID_BLUE>;
+			function = LED_FUNCTION_STATUS;
+			default-state = "off";
+		};
+
+		led_net_blue: led-net-blue {
+			gpios = <&tlmm 26 GPIO_ACTIVE_HIGH>;
+			color = <LED_COLOR_ID_BLUE>;
+			function = LED_FUNCTION_WAN;
+			default-state = "off";
+		};
+
+		led_net_red: led-net-red {
+			gpios = <&tlmm 27 GPIO_ACTIVE_HIGH>;
+			color = <LED_COLOR_ID_RED>;
+			function = LED_FUNCTION_WAN;
+			/* WAN 未连接时常亮红灯 */
+			default-state = "on";
+		};
+	};
+};
+
+&sleep_clk {
+	clock-frequency = <32000>;
+};
+
+&xo_board_clk {
+	clock-div = <4>;
+	clock-mult = <1>;
+};
+
+&blsp1_uart1 {
+	status = "okay";
+
+	/*
+	 * 原厂 serial@78af000 没有 pinctrl-0，串口由引导器配置。
+	 * 这里保留原引脚定义，实测串口可用。
+	 */
+	pinctrl-0 = <&serial_0_pins>;
+	pinctrl-names = "default";
+};
+
+&crypto {
+	status = "okay";
+};
+
+&cryptobam {
+	status = "okay";
+};
+
+&prng {
+	status = "okay";
+};
+
+&qfprom {
+	status = "okay";
+};
+
+&qpic_bam {
+	status = "okay";
+};
+
+&qpic_nand {
+	pinctrl-0 = <&qpic_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	nand@0 {
+		compatible = "spi-nand";
+		reg = <0>;
+		nand-ecc-engine = <&qpic_nand>;
+		nand-bus-width = <8>;
+
+		/*
+		 * 自定义固定分区表（不再使用 SMEM）。
+		 * 原厂双系统布局 rootfs/rootfs_1/overlay 合并成单个 117.5MB rootfs，
+		 * 供 OpenWrt 单系统使用。0xA80000 + 0x7580000 = 0x8000000。
+		 * 名字保持与原 SMEM 分区一致（小写），ART/bdata 等不动。
+		 */
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "0:sbl1";
+				reg = <0x0000000 0x0080000>;
+				read-only;
+			};
+			partition@80000 {
+				label = "0:mibib";
+				reg = <0x0080000 0x0080000>;
+				read-only;
+			};
+			partition@100000 {
+				label = "0:bootconfig";
+				reg = <0x0100000 0x0040000>;
+				read-only;
+			};
+			partition@140000 {
+				label = "0:bootconfig1";
+				reg = <0x0140000 0x0040000>;
+				read-only;
+			};
+			partition@180000 {
+				label = "0:qsee";
+				reg = <0x0180000 0x0100000>;
+				read-only;
+			};
+			partition@280000 {
+				label = "0:qsee_1";
+				reg = <0x0280000 0x0100000>;
+				read-only;
+			};
+			partition@380000 {
+				label = "0:devcfg";
+				reg = <0x0380000 0x0040000>;
+				read-only;
+			};
+			partition@3c0000 {
+				label = "0:devcfg_1";
+				reg = <0x03c0000 0x0040000>;
+				read-only;
+			};
+			partition@400000 {
+				label = "0:cdt";
+				reg = <0x0400000 0x0040000>;
+				read-only;
+			};
+			partition@440000 {
+				label = "0:cdt_1";
+				reg = <0x0440000 0x0040000>;
+				read-only;
+			};
+			partition@480000 {
+				label = "0:appsblenv";
+				reg = <0x0480000 0x0080000>;
+			};
+			partition@500000 {
+				label = "0:appsbl";
+				reg = <0x0500000 0x0140000>;
+				read-only;
+			};
+			partition@640000 {
+				label = "0:appsbl_1";
+				reg = <0x0640000 0x0140000>;
+				read-only;
+			};
+			partition@780000 {
+				label = "0:art";
+				reg = <0x0780000 0x0100000>;
+				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					macaddr_art_0: macaddr@0 {
+						reg = <0x0 0x6>;
+					};
+
+					macaddr_art_6: macaddr@6 {
+						compatible = "mac-base";
+						reg = <0x6 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+				};
+			};
+			partition@880000 {
+				label = "0:training";
+				reg = <0x0880000 0x0080000>;
+				read-only;
+			};
+			partition@900000 {
+				label = "bdata";
+				reg = <0x0900000 0x0080000>;
+				read-only;
+			};
+			partition@980000 {
+				label = "crash";
+				reg = <0x0980000 0x0080000>;
+			};
+			partition@a00000 {
+				label = "crash_syslog";
+				reg = <0x0a00000 0x0080000>;
+			};
+			partition@a80000 {
+				label = "rootfs";
+				reg = <0x0a80000 0x7580000>;
+			};
+		};
+	};
+};
+
+&switch {
+	status = "okay";
+
+	/* 原厂 V2: SGMII+ 2500 到 YT9215S */
+	switch_mac_mode = <MAC_MODE_SGMII_PLUS>;
+
+	qcom,port_phyinfo {
+		/* MAC0 -> 内置 GE PHY */
+		port@0 {
+			port_id = <1>;
+			mdiobus = <&mdio0>;
+			phy_address = <7>;
+		};
+
+		/* MAC1 -> Uniphy SGMII+ 2500 -> YT9215S CPU port */
+		port@1 {
+			port_id = <2>;
+			/* qca-ssdk 需要这个属性才会选 PORT_GMAC_TYPE = SGMII+ */
+			port_mac_sel = "QGMAC_PORT";
+			forced-speed = <2500>;
+			forced-duplex = <1>;
+		};
+	};
+};
+
+&dp1 {
+	status = "okay";
+
+	nvmem-cells = <&macaddr_art_0>;
+	nvmem-cell-names = "mac-address";
+};
+
+&dp2 {
+	status = "okay";
+
+	nvmem-cells = <&macaddr_art_6 0>;
+	nvmem-cell-names = "mac-address";
+	phy-mode = "2500base-x";
+
+	fixed-link {
+		speed = <2500>;
+		full-duplex;
+	};
+};
+
+&mdio0 {
+	status = "okay";
+};
+
+&ge_phy {
+	qcom,dac-preset-short-cable;
+};
+
+&mdio1 {
+	status = "okay";
+
+	pinctrl-0 = <&mdio1_pins>;
+	pinctrl-names = "default";
+
+	/*
+	 * V2 使用 Motorcomm YT9215S，不是 V1 的 QCA8337。
+	 * 默认 strap 地址 0x1d；如果探测不到，改试 0x0。
+	 */
+	switch1: switch@1d {
+		compatible = "motorcomm,yt9215";
+		reg = <0x1d>;
+
+		mdio {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			yt_phy0: phy@0 {
+				reg = <0>;
+			};
+
+			yt_phy1: phy@1 {
+				reg = <1>;
+			};
+
+			yt_phy2: phy@2 {
+				reg = <2>;
+			};
+
+			yt_phy3: phy@3 {
+				reg = <3>;
+			};
+
+			yt_phy4: phy@4 {
+				reg = <4>;
+			};
+		};
+
+		ethernet-ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			ethernet-port@0 {
+				reg = <0>;
+				label = "lan1";
+				phy-mode = "internal";
+				phy-handle = <&yt_phy0>;
+			};
+
+			ethernet-port@1 {
+				reg = <1>;
+				label = "lan2";
+				phy-mode = "internal";
+				phy-handle = <&yt_phy1>;
+			};
+
+			ethernet-port@2 {
+				reg = <2>;
+				label = "lan3";
+				phy-mode = "internal";
+				phy-handle = <&yt_phy2>;
+			};
+
+			ethernet-port@3 {
+				reg = <3>;
+				label = "wan";
+				phy-mode = "internal";
+				phy-handle = <&yt_phy3>;
+			};
+
+			/* CPU port: YT9215S external GMAC (Port 8) */
+			ethernet-port@8 {
+				reg = <8>;
+				/* 主线 yt921x 把 SGMII 当作 REVSGMII 用 */
+				phy-mode = "sgmii";
+				ethernet = <&dp2>;
+
+				fixed-link {
+					speed = <2500>;
+					full-duplex;
+					pause;
+					asym-pause;
+				};
+			};
+		};
+	};
+};
+
+&tlmm {
+	button_pins: button-state {
+		pins = "gpio28", "gpio38";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-up;
+	};
+
+	led_pins: led-state {
+		pins = "gpio24", "gpio25", "gpio26", "gpio27";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-down;
+	};
+
+	mdio1_pins: mdio-state {
+		mdc-pins {
+			pins = "gpio36";
+			function = "mdc";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+
+		mdio-pins {
+			pins = "gpio37";
+			function = "mdio";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+	};
+
+	qpic_pins: qpic-state {
+		clock-pins {
+			pins = "gpio9";
+			function = "qspi_clk";
+			drive-strength = <8>;
+			bias-disable;
+		};
+
+		cs-pins {
+			pins = "gpio8";
+			function = "qspi_cs";
+			drive-strength = <8>;
+			bias-disable;
+		};
+
+		data-pins {
+			pins = "gpio4", "gpio5", "gpio6", "gpio7";
+			function = "qspi_data";
+			drive-strength = <8>;
+			bias-disable;
+		};
+	};
+
+	serial_0_pins: uart0-state {
+		pins = "gpio20", "gpio21";
+		function = "blsp0_uart1";
+		drive-strength = <8>;
+		bias-disable;
+	};
+};
+
+/*
+ * RA80 要启用 WiFi。注意 256MB 内存较紧；
+ * 如果双频同时开启导致 OOM，可先关闭 2.4G：
+ *   &wifi { status = "disabled"; };
+ */
+&q6v5_wcss {
+	status = "okay";
+};
+
+&wifi {
+	// IPQ5018 2.4G
+	status = "okay";
+	qcom,rproc = <&q6_wcss_pd1>;
+	qcom,ath11k-calibration-variant = "Xiaomi-RA80";
+	qcom,ath11k-fw-memory-mode = <2>;
+	qcom,bdf-addr = <0x4c400000>;
+
+	ieee80211-freq-limit = <2400000 2483000>;
+};
+
+&wifi1 {
+	// QCN6122 5G
+	status = "okay";
+	qcom,rproc = <&q6_wcss_pd2>;
+	qcom,userpd-subsys-name = "q6v5_wcss_userpd2";
+	qcom,ath11k-calibration-variant = "Xiaomi-RA80";
+	qcom,ath11k-fw-memory-mode = <2>;
+	qcom,bdf-addr = <0x4d100000>;
+	qcom,m3-dump-addr = <0x4df00000>;
+
+	ieee80211-freq-limit = <5150000 5730000>;
+};
+
+&wifi2 {
+	status = "disabled";
+};

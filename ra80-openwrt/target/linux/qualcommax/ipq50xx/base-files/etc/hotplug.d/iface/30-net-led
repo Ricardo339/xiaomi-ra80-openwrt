@@ -1,0 +1,16 @@
+#!/bin/sh
+# RA80 V2: net LED group (GPIO26 blue / GPIO27 red)
+#   WAN up   -> white (blue) on, red off
+#   WAN down -> red on, white (blue) off
+[ "$INTERFACE" = "wan" ] || exit 0
+
+case "$ACTION" in
+	ifup)
+		echo 0 > /sys/class/leds/red:wan/brightness
+		echo 1 > /sys/class/leds/blue:wan/brightness
+		;;
+	ifdown|ifup-failed)
+		echo 1 > /sys/class/leds/red:wan/brightness
+		echo 0 > /sys/class/leds/blue:wan/brightness
+		;;
+esac

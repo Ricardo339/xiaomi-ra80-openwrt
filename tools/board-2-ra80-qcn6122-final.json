@@ -1,0 +1,15 @@
+[
+  {
+    "board": [
+      {
+        "names": [
+          "bus=ahb,qmi-chip-id=0,qmi-board-id=96,variant=Xiaomi-RA80",
+          "bus=ahb,qmi-chip-id=0,qmi-board-id=255,variant=Xiaomi-RA80",
+          "bus=ahb,qmi-chip-id=0,qmi-board-id=96",
+          "bus=ahb,qmi-chip-id=0,qmi-board-id=255"
+        ],
+        "data": "../ra80-firmware/bdwlan.b60.patched"
+      }
+    ]
+  }
+]

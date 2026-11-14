@@ -1,0 +1,38 @@
+--- a/net/dsa/tag_yt921x.c
++++ b/net/dsa/tag_yt921x.c
+@@ -108,7 +108,7 @@
+ 	u16 rx;
+ 
+ 	if (unlikely(!pskb_may_pull(skb, YT921X_TAG_LEN))) {
+-		kfree_skb(skb);
++		/* dsa_switch_rcv() frees the skb when we return NULL */
+ 		return NULL;
+ 	}
+ 
+@@ -118,7 +118,7 @@
+ 		dev_warn_ratelimited(&netdev->dev,
+ 				     "Unexpected EtherType 0x%04x\n",
+ 				     ntohs(tag[0]));
+-		kfree_skb(skb);
++		/* dsa_switch_rcv() frees the skb when we return NULL */
+ 		return NULL;
+ 	}
+ 
+@@ -127,7 +127,7 @@
+ 	if (unlikely((rx & YT921X_TAG_PORT_EN) == 0)) {
+ 		dev_warn_ratelimited(&netdev->dev,
+ 				     "Unexpected rx tag 0x%04x\n", rx);
+-		kfree_skb(skb);
++		/* dsa_switch_rcv() frees the skb when we return NULL */
+ 		return NULL;
+ 	}
+ 
+@@ -136,7 +136,7 @@
+ 	if (unlikely(!skb->dev)) {
+ 		dev_warn_ratelimited(&netdev->dev,
+ 				     "Couldn't decode source port %u\n", port);
+-		kfree_skb(skb);
++		/* dsa_switch_rcv() frees the skb when we return NULL */
+ 		return NULL;
+ 	}
+ 
